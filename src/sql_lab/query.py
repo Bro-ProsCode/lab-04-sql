@@ -23,19 +23,24 @@ if not all([host, user, password, database]):
     logging.error("Missing one or more required database environment variables.")
     sys.exit(1)
 
-# Initialize database connection
-db = mysql.connector.connect(
-    user=user,
-    host=host,
-    password=password,
-    database=database,
-    port=3306
-)
-cur = db.cursor()
+# Initialize database connection, wrapped so a failed connection doesn't leave a half-open handle and exits cleanly with a logged reason
+try:
+    db = mysql.connector.connect(
+        user=user,
+        host=host,
+        password=password,
+        database=database,
+        port=3306
+    )
+    cur = db.cursor()
+    logging.info("Connected to database '%s' at %s.", database, host)
+except mysql.connector.Error as e:
+    logging.error("Failed to connect to the database: %s", e)
+    sys.exit(1)
 
 
 def get_data_by_group(value: str):
-    """Return mock table rows whose group matches ``value`` (list of tuples).
+    """Return mock table rows whose `group` column matches ``value`` (list of tuples).
     """
     logging.info("Querying records where `group` = '%s'...", value)
     query = "SELECT * FROM `mock` WHERE `group` = %s;"
@@ -49,10 +54,31 @@ def get_data_by_group(value: str):
         return None
 
 
+def _get_valid_columns() -> set:
+    """Return the set of actual column names on the `mock` table.
+    """
+    try:
+        cur.execute("SHOW COLUMNS FROM `mock`;")
+        columns = {row[0] for row in cur.fetchall()}
+        return columns
+    except mysql.connector.Error as e:
+        logging.error("MySQL Error while fetching table columns: %s", e)
+        return set()
+
+
 def plot_counts(groupby: str = "group") -> pd.DataFrame:
     """Count records grouped by column, show a bar chart, and return DataFrame.
     """
     logging.info("Calculating category counts grouped by `%s`...", groupby)
+
+    valid_columns = _get_valid_columns() # checks whether the column exists in the table
+    if groupby not in valid_columns:
+        logging.error(
+            "Refusing to query unknown column '%s'. Valid columns: %s",
+            groupby, sorted(valid_columns)
+        )
+        return None
+
     query = f"SELECT `{groupby}`, COUNT(`{groupby}`) AS count FROM `mock` GROUP BY `{groupby}`;"
     try:
         cur.execute(query)
@@ -77,23 +103,24 @@ def plot_counts(groupby: str = "group") -> pd.DataFrame:
 
 def main():
     """Run demonstration queries against the mock database and print results."""
-    print("=== Group Counts ===")
-    counts_df = plot_counts(groupby="group")
-    if counts_df is not None and not counts_df.empty:
-        print(counts_df.to_string(index=False))
+    try:
+        print("=== Group Counts ===")
+        counts_df = plot_counts(groupby="group")
+        if counts_df is not None and not counts_df.empty:
+            print(counts_df.to_string(index=False))
 
-        # Select the first available group to demo parameter filtering
-        first_group = counts_df.iloc[0]["group"]
-        print(f"\n=== Records where group = '{first_group}' ===")
-        sample_records = get_data_by_group(first_group)
-        if sample_records:
-            for row in sample_records[:5]: # Display preview of first 5
-                print(row)
-
-    # Clean up connection
-    cur.close()
-    db.close()
-    logging.info("Database connection closed cleanly.")
+            # Select the first available group to demo parameter filtering
+            first_group = counts_df.iloc[0]["group"]
+            print(f"\n=== Records where group = '{first_group}' ===")
+            sample_records = get_data_by_group(first_group)
+            if sample_records:
+                for row in sample_records[:5]:  # Display preview of first 5
+                    print(row)
+    finally:
+        # Clean up connection whether or not the demo queries succeeded
+        cur.close()
+        db.close()
+        logging.info("Database connection closed cleanly.")
 
 
 if __name__ == "__main__":
