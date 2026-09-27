@@ -1,0 +1,7 @@
+username	email	title	published_at
+alex_m	alex@example.com	Intro to Systems	2026-09-26 17:45:32
+alex_m	alex@example.com	Debugging Memory Leaks	2026-09-26 17:45:32
+jordan_p	jordan@example.com	Intro to Databases	2026-09-26 17:45:32
+taylor_s	taylor@example.com	Data Pipelines 101	2026-09-26 17:45:32
+morgan_d	morgan@example.com	Network Protocols	2026-09-26 17:45:32
+casey_r	casey@example.com	Computer Vision Basics	2026-09-26 17:45:32
